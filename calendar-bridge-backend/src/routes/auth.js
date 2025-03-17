@@ -9,7 +9,7 @@ const router = express.Router();
 const oauth2Client = new google.auth.OAuth2(
   process.env.GOOGLE_CLIENT_ID,
   process.env.GOOGLE_CLIENT_SECRET,
-  `${process.env.CLIENT_URL}/auth/callback`
+  `${process.env.BACKEND_URL || 'https://calendar-bridge-backend.onrender.com'}/auth/callback`
 );
 
 // Start OAuth flow
@@ -29,7 +29,66 @@ router.get('/google', (req, res) => {
   res.redirect(authUrl);
 });
 
-// Handle OAuth callback
+// Handle OAuth callback via GET (for redirects from Google)
+router.get('/callback', async (req, res, next) => {
+  try {
+    const { code } = req.query;
+    
+    // Exchange code for tokens
+    const { tokens } = await oauth2Client.getToken(code);
+    oauth2Client.setCredentials(tokens);
+    
+    // Get user info
+    const people = google.people({ version: 'v1', auth: oauth2Client });
+    const { data } = await people.people.get({
+      resourceName: 'people/me',
+      personFields: 'emailAddresses,names',
+    });
+    
+    const email = data.emailAddresses[0].value;
+    const name = data.names[0].displayName;
+    const googleId = data.resourceName.split('/')[1];
+    
+    // Find or create user
+    let user = await User.findOne({ googleId });
+    
+    if (user) {
+      // Update tokens
+      user.tokens = tokens;
+      user.name = name;
+      user.email = email;
+    } else {
+      // Create new user
+      user = new User({
+        googleId,
+        email,
+        name,
+        tokens,
+      });
+    }
+    
+    await user.save();
+    
+    // Create JWT for authentication
+    const token = generateJWT({ userId: user._id });
+    
+    // Set JWT as cookie
+    res.cookie('auth_token', token, {
+      httpOnly: true,
+      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+    });
+    
+    // Redirect to frontend dashboard
+    res.redirect(`${process.env.CLIENT_URL}/dashboard`);
+  } catch (error) {
+    console.error('OAuth callback error:', error);
+    res.redirect(`${process.env.CLIENT_URL}/auth-error`);
+  }
+});
+
+// Handle OAuth callback via POST (for frontend API calls)
 router.post('/callback', async (req, res, next) => {
   try {
     const { code } = req.body;
@@ -133,7 +192,8 @@ router.post('/disconnect', async (req, res, next) => {
     
     res.clearCookie('auth_token');
     res.json({ success: true });
-  } catch (error) {
+  }
+  catch (error) {
     next(error);
   }
 });
