@@ -16,10 +16,8 @@ const PORT = process.env.PORT || 5000;
 app.use(express.json());
 app.use(cookieParser());
 app.use(cors({
-  origin: ['https://calendar-bridge-project.vercel.app', process.env.CLIENT_URL],
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
+  origin: "*",  // This will allow requests from any origin temporarily
+  credentials: true
 }));
 
 // Connect to MongoDB
