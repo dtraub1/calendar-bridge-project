@@ -17,7 +17,9 @@ app.use(express.json());
 app.use(cookieParser());
 app.use(cors({
   origin: ['https://calendar-bridge-project.vercel.app', process.env.CLIENT_URL],
-  credentials: true
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
 }));
 
 // Connect to MongoDB
